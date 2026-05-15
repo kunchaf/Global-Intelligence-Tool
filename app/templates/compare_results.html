@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Country Dashboard — Global Intel Tool</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg: #eef1f5;
+            --card: #fff;
+            --border: #d4dbe5;
+            --text: #1a2332;
+            --muted: #5c6b7e;
+            --accent: #2563eb;
+            --err: #b91c1c;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 24px;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.45;
+        }
+
+        .top {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .actions a, .actions button {
+            display: inline-block;
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .actions a.secondary {
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+            margin-right: 10px;
+        }
+
+        .actions button.primary {
+            background: #15803d;
+            color: #fff;
+            border: 1px solid #166534;
+        }
+
+        .panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Wide Tabular Form Styling */
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        table.data {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        table.data th,
+        table.data td {
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        table.data th {
+            background: #f8fafc;
+            font-weight: 650;
+            color: #334155;
+            position: sticky;
+            top: 0;
+        }
+
+        table.data tbody tr:hover {
+            background: #f1f5f9;
+        }
+        
+        .flag-img-small {
+            width: 48px;
+            height: auto;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            display: block;
+        }
+
+        .map-head { font-size: 1.2rem; font-weight: 650; margin: 0 0 12px; }
+        #map { height: 400px; width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+        
+        #history-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid #e2e8f0; }
+        #history-section h3 { font-size: 1.2rem; margin-top: 0; margin-bottom: 12px; }
+        #history-content { color: #334155; line-height: 1.6; text-align: justify; }
+
+        .skeleton { background: #e2e8f0; border-radius: 4px; height: 20px; margin-bottom: 8px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+
+        /* Religion Distribution Map */
+        .rel-map-panel { text-align: center; }
+        .rel-map-panel img {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .rel-map-panel img:hover { transform: scale(1.02); }
+        .rel-map-source {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 8px;
+        }
+        .rel-map-source a { color: var(--accent); text-decoration: none; }
+        .rel-map-source a:hover { text-decoration: underline; }
+
+    </style>
+</head>
+
+<body>
+    <div class="top">
+        <h1>Country Intelligence Dashboard</h1>
+        <div class="actions">
+            <a class="secondary" href="{{ url_for('main.index') }}">← New Search</a>
+            <button class="primary" id="export-btn" disabled>Download Tabular Data (.xlsx)</button>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <div id="dashboard-content" style="display: none;" class="panel">
+        <h2 style="margin-top: 0; margin-bottom: 16px;">Comprehensive Data Table</h2>
+        <div class="table-wrap">
+            <table class="data" aria-label="Country Data">
+                <thead>
+                    <tr>
+                        <th style="width: 35%;">Intelligence Category</th>
+                        <th style="width: 65%;">Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><th>Flag</th><td><img id="td-flag" src="" alt="Flag" class="flag-img-small" /></td></tr>
+                    <tr><th>Official Name</th><td id="td-name"></td></tr>
+                    <tr><th>Head of State / Gov.</th><td id="td-leader"><span class="skeleton" style="width:40%;"></span></td></tr>
+                    <tr><th>Capital City</th><td id="td-capital"></td></tr>
+                    <tr><th>Total Area (km²)</th><td id="td-area"></td></tr>
+                    <tr><th>Continent</th><td id="td-continent"></td></tr>
+                    <tr><th>Borders</th><td id="td-borders"></td></tr>
+                    <tr><th>Total Population</th><td id="td-pop"></td></tr>
+                    <tr><th>Languages</th><td id="td-lang"></td></tr>
+                    <tr><th>Religions</th><td id="td-rel"></td></tr>
+                    <tr><th>Currency Symbol</th><td id="td-cur"></td></tr>
+                    <tr><th>Independence Status</th><td id="td-ind"></td></tr>
+                    <tr><th>Time Zone</th><td id="td-tz"></td></tr>
+                    <tr><th>Calling Code</th><td id="td-call"></td></tr>
+                    <tr><th>Driving Side</th><td id="td-drive"></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- RELIGION DISTRIBUTION MAP -->
+    <div id="rel-map-section" class="panel" style="display: none;">
+        <h2 style="margin-top: 0; margin-bottom: 16px;">🗺️ Religion Distribution Map</h2>
+        <div class="rel-map-panel" id="rel-map-content">
+            <div class="skeleton" style="width:60%; height:300px; margin: 0 auto;"></div>
+        </div>
+    </div>
+    
+    <!-- Loading State -->
+    <div id="loading-state" class="panel">
+        <h2>Loading Intelligence Data...</h2>
+        <div class="skeleton" style="width: 50%;"></div>
+        <div class="skeleton" style="width: 70%;"></div>
+        <div class="skeleton" style="width: 40%;"></div>
+    </div>
+
+    <div class="panel">
+        <h2 class="map-head">Interactive Map</h2>
+        <div id="map" role="application" aria-label="World map"></div>
+        
+        <!-- WIKIPEDIA HISTORY SECTION -->
+        <div id="history-section">
+            <h3><img src="https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png" style="width:20px; vertical-align:middle; margin-right:8px;"/> History & Overview</h3>
+            <div id="history-content">
+                <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton" style="width: 60%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script id="compare-data" type="application/json">{{ payload | tojson }}</script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", async () => {
+            const payloadRaw = document.getElementById("compare-data").textContent;
+            const payload = JSON.parse(payloadRaw);
+            const countryRow = payload.rows && payload.rows.length > 0 ? payload.rows[0] : null;
+
+            if (!countryRow) {
+                document.getElementById('loading-state').innerHTML = "<h2>Error: No country data found.</h2>";
+                return;
+            }
+
+            const countryName = countryRow.country || countryRow.input;
+            
+            try {
+                // Parallel Loading Logic
+                const [restCountriesRes, wikiRes] = await Promise.all([
+                    fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}?fullText=true`).then(r => r.ok ? r.json() : null),
+                    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(countryName)}`).then(r => r.ok ? r.json() : null)
+                ]);
+
+                // Hide loader, show dashboard
+                document.getElementById('loading-state').style.display = 'none';
+                document.getElementById('dashboard-content').style.display = 'block';
+
+                if (restCountriesRes && restCountriesRes.length > 0) {
+                    const rc = restCountriesRes[0];
+                    
+                    // Table Populate
+                    document.getElementById('td-flag').src = rc.flags.png;
+                    document.getElementById('td-name').innerText = rc.name.official;
+                    document.getElementById('td-capital').innerText = rc.capital ? rc.capital[0] : 'N/A';
+                    document.getElementById('td-area').innerText = rc.area ? rc.area.toLocaleString() : 'N/A';
+                    document.getElementById('td-continent').innerText = rc.continents ? rc.continents[0] : 'N/A';
+                    
+                    // Fetch Leadership (President, PM, King) dynamically from Wikipedia Infobox
+                    fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvsection=0&titles=${encodeURIComponent(rc.name.common)}&format=json&origin=*`)
+                        .then(res => res.json())
+                        .then(data => {
+                            try {
+                                const pages = data.query.pages;
+                                const pageId = Object.keys(pages)[0];
+                                const content = pages[pageId].revisions[0]['*'];
+                                
+                                let leaders = [];
+                                const titleRegex = /leader_title\d*\s*=\s*(.*?)(?=\n[\|\}])/g;
+                                const nameRegex = /leader_name\d*\s*=\s*(.*?)(?=\n[\|\}])/g;
+                                
+                                const titles = [...content.matchAll(titleRegex)].map(m => m[1].replace(/\[\[|\]\]/g, '').split('|')[0].trim());
+                                const names = [...content.matchAll(nameRegex)].map(m => m[1].replace(/\[\[|\]\]|\{\{.*?\}\}/g, '').split('|')[0].trim());
+                                
+                                for (let i = 0; i < Math.min(titles.length, names.length); i++) {
+                                    if (titles[i] && names[i] && !titles[i].includes('<!--') && !names[i].includes('<!--')) {
+                                        const cleanTitle = titles[i].replace(/<ref.*?>.*?<\/ref>|<[^>]*>/g, '').trim();
+                                        const cleanName = names[i].replace(/<ref.*?>.*?<\/ref>|<[^>]*>/g, '').trim();
+                                        leaders.push(`<b>${cleanTitle}:</b> ${cleanName}`);
+                                    }
+                                }
+                                
+                                if (leaders.length > 0) {
+                                    let leaderHtml = leaders.slice(0, 3).map(l => 
+                                        `<div style="display:inline-block; margin: 3px 4px; padding:5px 12px; background:#f8fafc; border: 1px solid #e2e8f0; border-radius:6px; color: #0f172a; font-size: 0.9em;">👑 ${l}</div>`
+                                    ).join('');
+                                    document.getElementById('td-leader').innerHTML = leaderHtml;
+                                } else {
+                                    document.getElementById('td-leader').innerText = 'Not available';
+                                }
+                            } catch(e) {
+                                document.getElementById('td-leader').innerText = 'Not available';
+                            }
+                        })
+                        .catch(() => document.getElementById('td-leader').innerText = 'Not available');
+                    
+                    // Borders handling (Full Name + Vertical + Lengths)
+                    if (rc.borders && rc.borders.length > 0) {
+                        const borderCodes = rc.borders.join(',');
+                        fetch(`https://restcountries.com/v3.1/alpha?codes=${borderCodes}&fields=cca3,name`)
+                            .then(res => res.json())
+                            .then(borderData => {
+                                const borderMapping = {};
+                                borderData.forEach(b => { borderMapping[b.cca3] = b.name.common; });
+                                
+                                // Hardcoded border lengths specifically requested
+                                const BORDER_LENGTHS = {
+                                    "ETH": { "DJI": "343 km", "ERI": "1,033 km", "KEN": "867 km", "SOM": "1,640 km", "SSD": "1,299 km", "SDN": "744 km" }
+                                };
+                                const currentCountryCode = rc.cca3 || "ETH";
+                                const lengths = BORDER_LENGTHS[currentCountryCode] || {};
+
+                                let bordersHtml = '<ul style="margin: 0; padding-left: 20px;">';
+                                rc.borders.forEach(code => {
+                                    const fullName = borderMapping[code] || code;
+                                    const lengthInfo = lengths[code] ? ` - ${lengths[code]}` : '';
+                                    bordersHtml += `<li>${fullName}${lengthInfo}</li>`;
+                                });
+                                bordersHtml += '</ul>';
+                                document.getElementById('td-borders').innerHTML = bordersHtml;
+                            })
+                            .catch(err => {
+                                document.getElementById('td-borders').innerText = rc.borders.join(', ');
+                            });
+                    } else {
+                        // Hardcoded Maritime Borders for major island nations since API doesn't provide them
+                        const MARITIME_BORDERS = {
+                            "JPN": ["CHN", "KOR", "PRK", "RUS", "TWN"],
+                            "AUS": ["IDN", "TLS", "PNG", "SLB", "VUT", "NCL", "NZL"],
+                            "GBR": ["IRL", "FRA", "BEL", "NLD", "DEU", "DNK", "NOR"],
+                            "MDG": ["MOZ", "COM", "FRA", "SYC"],
+                            "ISL": ["GRL", "FRO"],
+                            "CUB": ["USA", "BHS", "HTI", "JAM", "MEX"],
+                            "PHL": ["TWN", "VNM", "MYS", "IDN", "PLW"]
+                        };
+                        const maritime = MARITIME_BORDERS[rc.cca3];
+                        
+                        if (maritime) {
+                            const borderCodes = maritime.join(',');
+                            fetch(`https://restcountries.com/v3.1/alpha?codes=${borderCodes}&fields=cca3,name`)
+                                .then(res => res.json())
+                                .then(borderData => {
+                                    const borderMapping = {};
+                                    borderData.forEach(b => { borderMapping[b.cca3] = b.name.common; });
+                                    let bordersHtml = '<ul style="margin: 0; padding-left: 20px;">';
+                                    maritime.forEach(code => {
+                                        const fullName = borderMapping[code] || code;
+                                        bordersHtml += `<li>${fullName} (Maritime)</li>`;
+                                    });
+                                    bordersHtml += '</ul>';
+                                    document.getElementById('td-borders').innerHTML = bordersHtml;
+                                })
+                                .catch(() => {
+                                    document.getElementById('td-borders').innerText = 'Maritime Borders (Oceanic)';
+                                });
+                        } else {
+                            document.getElementById('td-borders').innerText = 'Surrounded by Ocean';
+                        }
+                    }
+
+                    document.getElementById('td-pop').innerText = rc.population ? rc.population.toLocaleString() : 'N/A';
+                    document.getElementById('td-lang').innerText = rc.languages ? Object.values(rc.languages).join(', ') : 'N/A';
+                    document.getElementById('td-rel').innerHTML = countryRow.religion || 'N/A';
+                    document.getElementById('td-cur').innerText = rc.currencies ? Object.values(rc.currencies).map(c => `${c.name} (${c.symbol})`).join(', ') : 'N/A';
+                    document.getElementById('td-ind').innerText = rc.independent ? 'Independent' : 'Dependent Territory';
+                    document.getElementById('td-tz').innerText = rc.timezones ? rc.timezones.join(', ') : 'N/A';
+                    document.getElementById('td-call').innerText = rc.idd ? (rc.idd.root + (rc.idd.suffixes ? rc.idd.suffixes[0] : '')) : 'N/A';
+                    document.getElementById('td-drive').innerText = rc.car && rc.car.side ? rc.car.side : 'N/A';
+
+                    // Initialize Map
+                    if (rc.latlng && rc.latlng.length === 2) {
+                        const map = L.map('map').setView([rc.latlng[0], rc.latlng[1]], 5);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '© OpenStreetMap'
+                        }).addTo(map);
+                        L.marker([rc.latlng[0], rc.latlng[1]]).addTo(map)
+                            .bindPopup(`<b>${rc.name.common}</b>`)
+                            .openPopup();
+                            
+                        // Fetch and draw bold country borders
+                        if (rc.cca2) {
+                            fetch(`https://nominatim.openstreetmap.org/search?countrycodes=${rc.cca2}&polygon_geojson=1&format=json`)
+                                .then(res => res.json())
+                                .then(data => {
+                                    if (data && data.length > 0 && data[0].geojson) {
+                                        const borderLayer = L.geoJSON(data[0].geojson, {
+                                            style: {
+                                                color: '#2563eb', // Accent color (blue)
+                                                weight: 4,        // Bold line
+                                                opacity: 0.9,
+                                                fillColor: '#2563eb',
+                                                fillOpacity: 0.1
+                                            }
+                                        }).addTo(map);
+                                        
+                                        // Fit map bounds to the country border
+                                        map.fitBounds(borderLayer.getBounds());
+                                    }
+                                })
+                                .catch(err => console.error("Failed to load country border:", err));
+                        }
+                    } else {
+                        document.getElementById('map').innerHTML = "<p style='padding:20px; text-align:center;'>Map data unavailable.</p>";
+                    }
+
+                    // ── RELIGION DISTRIBUTION MAP from Wikipedia ──
+                    const wikiRelPage = `Religion_in_${rc.name.common.replace(/ /g, '_')}`;
+                    fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${wikiRelPage}&prop=images&imlimit=50&format=json&origin=*`)
+                        .then(r => r.json())
+                        .then(imgData => {
+                            const pages = imgData.query.pages;
+                            const pageId = Object.keys(pages)[0];
+                            if (pageId === '-1' || !pages[pageId].images) throw new Error('No page');
+                            
+                            const images = pages[pageId].images.map(i => i.title);
+                            
+                            // Blacklist: reject flags, emblems, logos, icons
+                            const blacklist = ['flag', 'coat_of_arm', 'emblem', 'logo', 'icon', 'symbol', 'seal_of', 'commons-logo', 'wikidata', 'edit-clear', 'ambox', 'question_book', 'folder_hex', 'text-x', 'wiki_letter', 'increase', 'decrease', 'steady'];
+                            
+                            // Score each image — higher = better match for religion distribution map
+                            const mapKeywords = ['map', 'distribution', 'dominant', 'majority', 'census', 'pie_chart', 'chart', 'graph', 'demograph', 'religious_composition'];
+                            const goodKeywords = ['religion', 'faith', 'belief', 'worship'];
+                            
+                            let scored = images
+                                .filter(img => {
+                                    const lower = img.toLowerCase();
+                                    // Must be an image file
+                                    if (!lower.endsWith('.svg') && !lower.endsWith('.png') && !lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) return false;
+                                    // Reject blacklisted items
+                                    if (blacklist.some(bl => lower.includes(bl))) return false;
+                                    return true;
+                                })
+                                .map(img => {
+                                    const lower = img.toLowerCase();
+                                    let score = 0;
+                                    mapKeywords.forEach(kw => { if (lower.includes(kw)) score += 3; });
+                                    goodKeywords.forEach(kw => { if (lower.includes(kw)) score += 1; });
+                                    return { title: img, score };
+                                })
+                                .filter(item => item.score > 0)
+                                .sort((a, b) => b.score - a.score);
+                            
+                            if (scored.length === 0) throw new Error('No religion map image found');
+                            const bestMatch = scored[0].title;
+                            
+                            // Get the actual image URL from Wikimedia
+                            return fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(bestMatch)}&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=800&format=json&origin=*`)
+                                .then(r => r.json())
+                                .then(urlData => {
+                                    const uPages = urlData.query.pages;
+                                    const uPageId = Object.keys(uPages)[0];
+                                    const info = uPages[uPageId].imageinfo[0];
+                                    const thumbUrl = info.thumburl || info.url;
+                                    const fullUrl = info.url;
+                                    const desc = info.extmetadata && info.extmetadata.ImageDescription 
+                                        ? info.extmetadata.ImageDescription.value.replace(/<[^>]*>/g, '').substring(0, 200) 
+                                        : 'Religion distribution map';
+                                    
+                                    document.getElementById('rel-map-section').style.display = 'block';
+                                    document.getElementById('rel-map-content').innerHTML = `
+                                        <a href="${fullUrl}" target="_blank" title="Click to view full resolution">
+                                            <img src="${thumbUrl}" alt="Religion distribution map of ${rc.name.common}" />
+                                        </a>
+                                        <p class="rel-map-source">
+                                            ${desc}<br>
+                                            Source: <a href="https://en.wikipedia.org/wiki/${wikiRelPage}" target="_blank">Wikipedia — Religion in ${rc.name.common}</a>
+                                        </p>
+                                    `;
+                                });
+                        })
+                        .catch(() => {
+                            // If no religion-specific map, keep section hidden
+                            document.getElementById('rel-map-section').style.display = 'none';
+                        });
+                }
+
+                // History Populate
+                if (wikiRes && wikiRes.extract) {
+                    document.getElementById('history-content').innerHTML = `<p>${wikiRes.extract}</p>`;
+                } else {
+                    document.getElementById('history-content').innerHTML = `<p>History summary not available.</p>`;
+                }
+
+                // Enable Export
+                const exportBtn = document.getElementById('export-btn');
+                exportBtn.disabled = false;
+                exportBtn.addEventListener('click', () => {
+                    // Extract exactly what is seen on the dashboard to ensure vertical layout
+                    const exportArray = [
+                        { "Intelligence Category": "Official Name", "Value": document.getElementById('td-name').innerText },
+                        { "Intelligence Category": "Head of State / Gov.", "Value": document.getElementById('td-leader').innerText },
+                        { "Intelligence Category": "Capital City", "Value": document.getElementById('td-capital').innerText },
+                        { "Intelligence Category": "Total Area (km2)", "Value": document.getElementById('td-area').innerText },
+                        { "Intelligence Category": "Continent", "Value": document.getElementById('td-continent').innerText },
+                        { "Intelligence Category": "Borders", "Value": document.getElementById('td-borders').innerText },
+                        { "Intelligence Category": "Total Population", "Value": document.getElementById('td-pop').innerText },
+                        { "Intelligence Category": "Languages", "Value": document.getElementById('td-lang').innerText },
+                        { "Intelligence Category": "Religions", "Value": document.getElementById('td-rel').innerText },
+                        { "Intelligence Category": "Currency Symbol", "Value": document.getElementById('td-cur').innerText },
+                        { "Intelligence Category": "Independence Status", "Value": document.getElementById('td-ind').innerText },
+                        { "Intelligence Category": "Time Zone", "Value": document.getElementById('td-tz').innerText },
+                        { "Intelligence Category": "Calling Code", "Value": document.getElementById('td-call').innerText },
+                        { "Intelligence Category": "Driving Side", "Value": document.getElementById('td-drive').innerText }
+                    ];
+
+                    const worksheet = XLSX.utils.json_to_sheet(exportArray); 
+                    
+                    // Widen the columns for a clean and professional spreadsheet appearance
+                    worksheet['!cols'] = [ { wch: 30 }, { wch: 60 } ];
+
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, 'Country Data');
+                    XLSX.writeFile(workbook, `${countryName.replace(/\s+/g, '_')}_Data.xlsx`);
+                });
+
+            } catch (error) {
+                console.error("Failed to fetch data:", error);
+                document.getElementById('loading-state').innerHTML = "<h2>Failed to load complete intelligence data.</h2>";
+            }
+        });
+    </script>
+</body>
+</html>

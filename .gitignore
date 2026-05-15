@@ -1,0 +1,7 @@
+venv/
+*.pyc
+__pycache__/
+instance/
+.env
+.DS_Store
+app/static/data/large_temp_files.json
